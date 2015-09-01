@@ -1,0 +1,76 @@
+# -*- mode: ruby -*-
+Vagrant.require_plugin 'vagrant-aws'
+
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'aws'
+
+puts "Target:                      " + target
+puts "AWS Access Key:              '" + aws_access_key + "'"
+puts "AWS Secret Key:              '" + aws_secret_key + "'"
+
+puts "keypair_name:                " + vconfig['ssh']['username']
+puts "keypair_name:                " + vconfig['ssh']['private_key_path']
+
+puts "AWS Keypair Name:            " + vconfig['vm']['provider']['aws']['keypair_name']
+puts "AWS AMI:                     " + vconfig['vm']['provider']['aws']['ami']
+puts "AWS Instance Type:           " + vconfig['vm']['provider']['aws']['instance_type']
+puts "AWS Subnet id:               " + vconfig['vm']['provider']['aws']['subnet_id']
+puts "AWS Elastic IP:              " + vconfig['vm']['provider']['aws']['elastic_ip']
+puts "AWS Region:                  " + vconfig['vm']['provider']['aws']['region']
+puts "AWS Security Groups:         " + vconfig['vm']['provider']['aws']['security_groups']
+vconfig['vm']['provider']['aws']['tags'].each do |key, tag|
+    puts "AWS Tag:                 " + tag
+end
+
+
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "dummy"
+  config.vm.hostname = "#{vconfig['vm']['hostname']}"
+
+  # Provisioning Main Box
+  config.vm.provider :aws do |aws, override|
+    aws.access_key_id             = "#{aws_access_key}"
+    aws.secret_access_key         = "#{aws_secret_key}"
+
+    aws.keypair_name              = "#{vconfig['vm']['provider']['aws']['keypair_name']}"
+    aws.ami                       = "#{vconfig['vm']['provider']['aws']['ami']}"
+    aws.instance_type             = "#{vconfig['vm']['provider']['aws']['instance_type']}"
+    aws.subnet_id                 = "#{vconfig['vm']['provider']['aws']['subnet_id']}"
+    aws.elastic_ip                = "#{vconfig['vm']['provider']['aws']['elastic_ip']}"
+
+    override.ssh.username         = "#{vconfig['ssh']['username']}"
+    override.ssh.private_key_path = "#{vconfig['ssh']['private_key_path']}"
+
+    if !vconfig['vm']['provider']['aws']['region'].nil?
+      aws.region                  = "#{vconfig['vm']['provider']['aws']['region']}"
+    end
+
+    if !vconfig['vm']['provider']['aws']['security_groups'].nil? && !vconfig['vm']['provider']['aws']['security_groups'].empty?
+      aws.security_groups = vconfig['vm']['provider']['aws']['security_groups']
+    end
+
+    aws.tags = {}
+    vconfig['vm']['provider']['aws']['tags'].each do |key, tag|
+      aws.tags.store(key, tag)
+    end
+  end
+
+  vconfig['vm']['synced_folder'].each do |i, folder|
+    if folder['source'] != '' && folder['target'] != ''
+      config.vm.synced_folder "#{folder['source']}", "#{folder['target']}", owner: "#{folder['owner']}", group: "#{folder['group']}", id: "#{i}"
+    end
+  end
+
+  # Run Ansible provisioner once for all VMs at the end.
+  config.vm.provision "ansible" do |ansible|
+     ansible.playbook = "#{dir}/provisioning/playbook-aws.yml"
+     ansible.sudo = true
+     #ansible.inventory_path = "inventories/vagrant/inventory"
+        ansible.limit = "all"
+     #   ansible.extra_vars = {
+     #     ansible_ssh_user: 'vagrant',
+     #     ansible_ssh_private_key_file: "~/.vagrant.d/insecure_private_key"
+     #   }
+  end
+
+end
